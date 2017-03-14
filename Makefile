@@ -1,5 +1,8 @@
 obj-m += hal_linuxgpio.o
 include /usr/share/linuxcnc/Makefile.modinc
 
-lean:
-	rm -v *.o *.so
+install:
+	install --verbose -m 644 hal_linuxgpio.so /usr/lib/linuxcnc/rt-preempt/
+
+clean:
+	rm -v *.o *.so *.tmp *.ver *.exported
