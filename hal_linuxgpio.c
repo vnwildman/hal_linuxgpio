@@ -1,4 +1,4 @@
-/********************************************************************
+/**********************************************************
 * Description:  hal_linuxgpio.c
 *               Driver for GPIO pins using sysfs interface
 *
@@ -6,7 +6,7 @@
 * License: GPL Version 2
 * Copyright (c) 2017.
 *
-/********************************************************************/
+/*********************************************************/
 
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "rtapi_bitops.h"
@@ -28,9 +28,9 @@
 #include <unistd.h>
 #include <stdio.h>
 
-static signed char pinname[MAX_PIN] = {[0 ... MAX_PIN-1] = -1};
-static signed char     dir[MAX_PIN] = {[0 ... MAX_PIN-1] =  1}; // all output
-static         int  gpiofd[MAX_PIN] = {[0 ... MAX_PIN-1] = -1};
+static int pinname[MAX_PIN] = {[0 ... MAX_PIN-1] = -1};
+static int     dir[MAX_PIN] = {[0 ... MAX_PIN-1] =  1}; // all output
+static int  gpiofd[MAX_PIN] = {[0 ... MAX_PIN-1] = -1};
 
 static int npins = 0;
 
@@ -55,7 +55,7 @@ int rtapi_app_main(void)
 {
   int retval = 0;
   int n = 0 ;
-  signed char pin;
+  int pin;
 
   comp_id = hal_init("hal_linuxgpio");
   if (comp_id < 0)
@@ -64,7 +64,13 @@ int rtapi_app_main(void)
       return -1;
     }
 
-  parse_conf();
+  if (parse_conf() == -1)
+    {
+      rtapi_print_msg(RTAPI_MSG_ERR,"HAL_LINUXGPIO: ERROR: parse_conf() failed\n");
+      hal_exit(comp_id);
+      return -1;
+    }
+
   gpio_data = hal_malloc(npins * sizeof(void *));
   if (gpio_data == 0)
     {
@@ -78,21 +84,20 @@ int rtapi_app_main(void)
   for (n = 0; n < npins; n++)
     {
       pin = pinname[n];
+      rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is used\n", pin);
       if (dir[n])
         {
-          if ((retval = hal_pin_bit_newf(HAL_IN, &gpio_data[n],
-                                         comp_id, "hal_linuxgpio.pin-%02d-out", pin)) < 0)
-            {
-              break;
-            }
+          retval = hal_pin_bit_newf(HAL_IN, &gpio_data[n],
+                                    comp_id, "hal_linuxgpio.pin-%02d-out", pin);
+          rtapi_print_msg(RTAPI_MSG_INFO,
+                          "Exported hal_linuxgpio.pin-%02d-out", pin);
         }
       else
         {
-          if ((retval = hal_pin_bit_newf(HAL_OUT, &gpio_data[n],
-                                         comp_id, "hal_linuxgpio.pin-%02d-in", pin)) < 0)
-            {
-              break;
-            }
+          retval = hal_pin_bit_newf(HAL_OUT, &gpio_data[n],
+                                    comp_id, "hal_linuxgpio.pin-%02d-in", pin);
+          rtapi_print_msg(RTAPI_MSG_INFO,
+                          "Exported hal_linuxgpio.pin-%02d-in", pin);
         }
       if (retval < 0)
         {
@@ -122,7 +127,7 @@ int rtapi_app_main(void)
 void rtapi_app_exit(void)
 {
   int i;
-  for (i = 0; i < MAX_PIN -1; i++)
+  for (i = 0; i < npins; i++)
     {
       if (gpiofd[i] != -1)
         close(gpiofd[i]);
@@ -182,6 +187,7 @@ static int parse_conf()
 
       pinname[npins] = pin;
       dir[npins]     = 0;   // set pin as input
+
       rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is configured as input\n", pin);
 
       snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
@@ -286,5 +292,7 @@ static int parse_conf()
     }
 
   npins++;
+  rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: npins %d!\n", npins);
+  return 0;
 }
 
