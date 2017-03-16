@@ -26,7 +26,6 @@
 #include <sys/mman.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <stdio.h>
 
 static int pinname[MAX_PIN] = {[0 ... MAX_PIN-1] = -1};
 static int     dir[MAX_PIN] = {[0 ... MAX_PIN-1] =  1}; // all output
@@ -60,13 +59,15 @@ int rtapi_app_main(void)
   comp_id = hal_init("hal_linuxgpio");
   if (comp_id < 0)
     {
-      rtapi_print_msg(RTAPI_MSG_ERR,"HAL_LINUXGPIO: ERROR: hal_init() failed\n");
+      rtapi_print_msg(RTAPI_MSG_ERR,
+                      "HAL_LINUXGPIO: ERROR: hal_init() failed\n");
       return -1;
     }
 
   if (parse_conf() == -1)
     {
-      rtapi_print_msg(RTAPI_MSG_ERR,"HAL_LINUXGPIO: ERROR: parse_conf() failed\n");
+      rtapi_print_msg(RTAPI_MSG_ERR,
+                      "HAL_LINUXGPIO: ERROR: parse_conf() failed\n");
       hal_exit(comp_id);
       return -1;
     }
@@ -80,11 +81,12 @@ int rtapi_app_main(void)
       return -1;
     }
 
-  /* Setup hal pin in/out */
+  /* Setup in/out hal pin */
   for (n = 0; n < npins; n++)
     {
       pin = pinname[n];
-      rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is used\n", pin);
+      rtapi_print_msg(RTAPI_MSG_INFO,
+                      "Pin %d is used\n", pin);
       if (dir[n])
         {
           retval = hal_pin_bit_newf(HAL_IN, &gpio_data[n],
@@ -119,7 +121,8 @@ int rtapi_app_main(void)
       return -1;
     }
 
-  rtapi_print_msg(RTAPI_MSG_INFO, "HAL_LINUXGPIO: installed driver\n");
+  rtapi_print_msg(RTAPI_MSG_INFO,
+                  "HAL_LINUXGPIO: installed driver\n");
   hal_ready(comp_id);
   return 0;
 }
@@ -146,7 +149,8 @@ static void rw_gpio(void *arg, long period)
         {
           if (1 != write(gpiofd[n], *(gpio_data[n]) ? "1" : "0", 1))
             {
-              rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to write value!\n");
+              rtapi_print_msg(RTAPI_MSG_ERR,
+                              "HAL_LINUXGPIO: ERROR: Failed to write value!\n");
               hal_exit(comp_id);
               return;
             }
@@ -155,7 +159,8 @@ static void rw_gpio(void *arg, long period)
         {
           if (-1 == read(gpiofd[n], value_str, BUFFER_MAX))
             {
-              rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to read value!\n");
+              rtapi_print_msg(RTAPI_MSG_ERR,
+                              "HAL_LINUXGPIO: ERROR: Failed to read value!\n");
               hal_exit(comp_id);
               return;
             }
@@ -170,13 +175,22 @@ static int parse_conf()
   char buffer[BUFFER_MAX];
   char path[DIRECTION_MAX];
   ssize_t bytes_written;
-  int fd;
+  int exportfd, fd;
 
   if(input_pins[0] == -1 && output_pins[0] == -1)
     {
-      rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: missing both input_pins and ouput_pins configure string\n");
+      rtapi_print_msg(RTAPI_MSG_ERR,
+                      "HAL_LINUXGPIO: ERROR: missing both input_pins and ouput_pins configure string\n");
       hal_exit(comp_id);
       return -1;
+    }
+  exportfd = open("/sys/class/gpio/export", O_WRONLY);
+  if (-1 == fd)
+    {
+      rtapi_print_msg(RTAPI_MSG_ERR,
+                      "HAL_LINUXGPIO: ERROR: Failed to open export for writing!\n");
+      hal_exit(comp_id);
+      return(-1);
     }
 
   /* parse configure input pins */
@@ -188,48 +202,45 @@ static int parse_conf()
       pinname[npins] = pin;
       dir[npins]     = 0;   // set pin as input
 
-      rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is configured as input\n", pin);
+      rtapi_print_msg(RTAPI_MSG_INFO,
+                      "Pin %d is configured as input\n", pin);
 
-      snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
+      rtapi_snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
       if(access(path, F_OK))
         {
-          rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is ready exported by other application or duplicated\n", pin);
+          rtapi_print_msg(RTAPI_MSG_WARN,
+                          "Pin %d is ready exported by other application or duplicated\n", pin);
           continue;
         }
 
       /*Export*/
-      fd = open("/sys/class/gpio/export", O_WRONLY);
-      if (-1 == fd)
-        {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open export for writing!\n");
-          hal_exit(comp_id);
-          return(-1);
-        }
-      bytes_written = snprintf(buffer, BUFFER_MAX, "%d", pin);
-      write(fd, buffer, bytes_written);
-      close(fd);
+      bytes_written = rtapi_snprintf(buffer, BUFFER_MAX, "%d", pin);
+      write(exportfd, buffer, bytes_written);
 
       /* Set it as input */
       fd = open(path, O_WRONLY);
       if (-1 == fd)
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open gpio direction for writing!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to open gpio direction for writing!\n");
           hal_exit(comp_id);
           return(-1);
         }
       if (-1 == write(fd, "in", 2))
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to set direction!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to set direction!\n");
           hal_exit(comp_id);
           return(-1);
         }
       close(fd);
 
-      snprintf(path, VALUE_MAX, "/sys/class/gpio/gpio%d/value", pin);
+      rtapi_snprintf(path, VALUE_MAX, "/sys/class/gpio/gpio%d/value", pin);
       gpiofd[npins] = open(path, O_RDONLY);
       if (-1 == gpiofd[npins])
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open gpio value for reading!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to open gpio value for reading!\n");
           hal_exit(comp_id);
           return(-1);
         }
@@ -245,54 +256,51 @@ static int parse_conf()
       pinname[npins] = pin;
       dir[npins]  = 1;   // set pin as output
 
-      snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
+      rtapi_snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
       if(access(path, F_OK ))
         {
-          rtapi_print_msg(RTAPI_MSG_INFO, "Pin %d is ready exported by other application or duplicated\n", pin);
+          rtapi_print_msg(RTAPI_MSG_WARN,
+                          "Pin %d is ready exported by other application or duplicated\n", pin);
           continue;
         }
 
       /*Export*/
-      fd = open("/sys/class/gpio/export", O_WRONLY);
-      if (-1 == fd)
-        {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open export for writing!\n");
-          hal_exit(comp_id);
-          return(-1);
-        }
-      bytes_written = snprintf(buffer, BUFFER_MAX, "%d", pin);
+      bytes_written = rtapi_snprintf(buffer, BUFFER_MAX, "%d", pin);
       write(fd, buffer, bytes_written);
-      close(fd);
 
       /* Set it as out */
       fd = open(path, O_WRONLY);
       if (-1 == fd)
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open gpio direction for writing!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to open gpio direction for writing!\n");
           hal_exit(comp_id);
           return(-1);
         }
-      if (-1 == write(fd, "out", 2))
+      if (-1 == write(fd, "out", 3))
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to set direction!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to set direction!\n");
           hal_exit(comp_id);
           return(-1);
         }
       close(fd);
 
-      snprintf(path, VALUE_MAX, "/sys/class/gpio/gpio%d/value", pin);
+      rtapi_snprintf(path, VALUE_MAX, "/sys/class/gpio/gpio%d/value", pin);
       gpiofd[npins] = open(path, O_WRONLY);
       if (-1 == gpiofd[npins])
         {
-          rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: Failed to open gpio value for reading!\n");
+          rtapi_print_msg(RTAPI_MSG_ERR,
+                          "HAL_LINUXGPIO: ERROR: Failed to open gpio value for reading!\n");
           hal_exit(comp_id);
           return(-1);
         }
       npins++;
     }
-
+  close(exportfd);
   npins++;
-  rtapi_print_msg(RTAPI_MSG_ERR, "HAL_LINUXGPIO: ERROR: npins %d!\n", npins);
+  rtapi_print_msg(RTAPI_MSG_ERR,
+                  "HAL_LINUXGPIO: ERROR: npins %d!\n", npins);
   return 0;
 }
 
